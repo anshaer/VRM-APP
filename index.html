@@ -2,36 +2,80 @@
 <html lang="zh-TW">
 <head>
     <meta charset="utf-8">
-    <title>VRM 動作捕捉網頁 (含骨架顯示)</title>
+    <title>VRM 動態捕捉網頁 (專業版)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #333; font-family: sans-serif; }
-        #ui-container { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(255,255,255,0.9); padding: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        #video-container { position: absolute; bottom: 10px; left: 10px; z-index: 10; border: 2px solid #fff; border-radius: 8px; overflow: hidden; background-color: #000; }
         
-        /* 隱藏真實影片，只顯示畫出骨架的 Canvas */
-        video { display: none; } 
-        canvas.output_canvas { display: block; width: 320px; height: 240px; transform: scaleX(-1); /* 鏡像翻轉 */ }
+        /* UI 面板設計 */
+        #ui-container { 
+            position: absolute; top: 10px; left: 10px; z-index: 10; 
+            background: rgba(255,255,255,0.95); padding: 15px; 
+            border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); 
+            max-width: 300px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
         
-        button, input { margin-top: 10px; font-size: 14px; }
+        .control-group { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #ddd; }
+        .control-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        
+        button, input[type="file"] { width: 100%; margin-top: 5px; padding: 5px; font-size: 14px; }
+        button { background: #2563eb; color: white; border: none; border-radius: 4px; padding: 8px; cursor: pointer; }
+        button:disabled { background: #94a3b8; cursor: not-allowed; }
+        
+        .slider-row { display: flex; flex-direction: column; margin-top: 5px; }
+        .slider-row label { font-size: 13px; color: #333; display: flex; justify-content: space-between; }
+        input[type="range"] { width: 100%; margin-top: 4px; }
+
+        /* 視訊與骨架畫布 */
+        #video-container { 
+            position: absolute; bottom: 10px; left: 10px; z-index: 10; 
+            border: 2px solid #fff; border-radius: 8px; overflow: hidden; 
+            background-color: #000; box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+        }
+        video { display: none; } /* 隱藏真實影片，只顯示骨架 */
+        canvas.output_canvas { display: block; width: 240px; height: 180px; transform: scaleX(-1); }
     </style>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    
     <script src="https://cdn.jsdelivr.net/npm/kalidokit@1.1.5/dist/kalidokit.umd.js"></script>
 </head>
 <body>
     <div id="ui-container">
-        <h3>VRM Web VTuber</h3>
-        <label>1. 選擇本地 VRM 檔案：</label><br>
-        <input type="file" id="vrm-upload" accept=".vrm"><br>
-        <button id="start-camera" disabled>2. 啟動攝影機</button>
-        <div id="status" style="margin-top: 10px; font-weight: bold; color: #555;">請先載入模型...</div>
+        <h3 style="margin-top: 0;">⚙️ VRM 控制面板</h3>
+        
+        <div class="control-group">
+            <label><strong>1. 載入檔案</strong></label>
+            <input type="file" id="vrm-upload" accept=".vrm" title="選擇 VRM 模型">
+            <input type="file" id="bg-upload" accept="image/*" title="選擇背景圖片 (可選)">
+        </div>
+
+        <div class="control-group">
+            <label><strong>2. 燈光與曝光調整 (防過曝)</strong></label>
+            <div class="slider-row">
+                <label>環境光強度 (陰影亮度): <span id="ambient-val">0.4</span></label>
+                <input type="range" id="ambient-slider" min="0" max="2" step="0.1" value="0.4">
+            </div>
+            <div class="slider-row">
+                <label>平行光強度 (主光源): <span id="dir-val">0.8</span></label>
+                <input type="range" id="dir-slider" min="0" max="3" step="0.1" value="0.8">
+            </div>
+            <div class="slider-row">
+                <label>相機曝光度 (整體明暗): <span id="exp-val">1.0</span></label>
+                <input type="range" id="exp-slider" min="0" max="3" step="0.1" value="1.0">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <button id="start-camera" disabled>3. 啟動 iPad/PC 攝影機</button>
+            <div id="status" style="margin-top: 10px; font-size: 13px; font-weight: bold; color: #d97706;">請先載入 VRM 模型...</div>
+        </div>
     </div>
 
     <div id="video-container">
-        <video id="video" autoplay playsinline></video>
+        <video id="video" playsinline></video>
         <canvas class="output_canvas" id="output-canvas" width="640" height="480"></canvas>
     </div>
 
@@ -60,30 +104,44 @@
         const statusText = document.getElementById('status');
 
         // ==========================================
-        // [階段一] 設定 3D 場景與載入 VRM
+        // 1. 設定 3D 場景與燈光
         // ==========================================
         const scene = new THREE.Scene();
+        // 預設背景顏色
+        scene.background = new THREE.Color(0x333333); 
+        
         const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.3, 3);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        
+        // 【防過曝關鍵 1】開啟色調映射 (Tone Mapping)，讓高光更自然
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0; 
         document.body.appendChild(renderer.domElement);
 
-        const light = new THREE.DirectionalLight(0xffffff, 2.0);
-        light.position.set(1, 1, 1).normalize();
-        scene.add(light);
+        // 【防過曝關鍵 2】分離環境光與平行光
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); // 基礎柔和光
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); // 模擬陽光/主光
+        directionalLight.position.set(1.0, 2.0, 1.0).normalize();
+        scene.add(directionalLight);
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.target.set(0, 1.3, 0);
 
+        // ==========================================
+        // 2. UI 互動邏輯 (檔案上傳、燈光拉桿)
+        // ==========================================
         const loader = new GLTFLoader();
         loader.register((parser) => new VRMLoaderPlugin(parser));
 
+        // 載入 VRM 模型
         document.getElementById('vrm-upload').addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (!file) return;
-
             statusText.innerText = "載入模型中...";
             statusText.style.color = "#d97706";
             const url = URL.createObjectURL(file);
@@ -94,11 +152,34 @@
                 currentVrm.scene.rotation.y = Math.PI;
                 scene.add(currentVrm.scene);
 
-                statusText.innerText = "模型載入成功！可以啟動攝影機了。";
+                statusText.innerText = "模型準備就緒！";
                 statusText.style.color = "#16a34a";
                 startCameraButton.disabled = false; 
             });
         });
+
+        // 載入背景圖片
+        document.getElementById('bg-upload').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const url = URL.createObjectURL(file);
+            const texture = new THREE.TextureLoader().load(url, () => {
+                texture.colorSpace = THREE.SRGBColorSpace; // 確保顏色正確
+                scene.background = texture;
+            });
+        });
+
+        // 綁定燈光控制拉桿
+        const bindSlider = (id, valId, callback) => {
+            document.getElementById(id).addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                document.getElementById(valId).innerText = val.toFixed(1);
+                callback(val);
+            });
+        };
+        bindSlider('ambient-slider', 'ambient-val', (val) => ambientLight.intensity = val);
+        bindSlider('dir-slider', 'dir-val', (val) => directionalLight.intensity = val);
+        bindSlider('exp-slider', 'exp-val', (val) => renderer.toneMappingExposure = val);
 
         const clock = new THREE.Clock();
         function animate() {
@@ -109,9 +190,8 @@
         animate();
 
         // ==========================================
-        // [階段二] 動作捕捉、骨架繪製與模型連動
+        // 3. 動作捕捉與骨架連動 (支援 iPad)
         // ==========================================
-
         const rigRotation = (boneName, rads, damp = 1, slerp = 0.1) => {
             if (!currentVrm || !rads) return;
             const boneNode = currentVrm.humanoid.getNormalizedBoneNode(boneName);
@@ -122,38 +202,22 @@
         };
 
         const onResults = (results) => {
-            // --- 1. 繪製辨識結果到 Canvas ---
+            // 繪製骨架到 Canvas
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            // 畫出原本的鏡頭畫面當底圖
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-
-            // 畫出臉部網格 (藍色)
-            if (results.faceLandmarks) {
-                drawConnectors(canvasCtx, results.faceLandmarks, FACEMESH_TESSELATION, {color: '#C0C0C070', lineWidth: 1});
-            }
-            // 畫出身體骨架 (綠色/紅色)
-            if (results.poseLandmarks) {
-                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
-                drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2});
-            }
-            // 畫出雙手 (紫色/橘色)
-            if (results.leftHandLandmarks) {
-                drawConnectors(canvasCtx, results.leftHandLandmarks, HAND_CONNECTIONS, {color: '#CC0000', lineWidth: 5});
-            }
-            if (results.rightHandLandmarks) {
-                drawConnectors(canvasCtx, results.rightHandLandmarks, HAND_CONNECTIONS, {color: '#00CC00', lineWidth: 5});
-            }
+            if (results.faceLandmarks) drawConnectors(canvasCtx, results.faceLandmarks, FACEMESH_TESSELATION, {color: '#C0C0C070', lineWidth: 1});
+            if (results.poseLandmarks) drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
+            if (results.leftHandLandmarks) drawConnectors(canvasCtx, results.leftHandLandmarks, HAND_CONNECTIONS, {color: '#CC0000', lineWidth: 3});
+            if (results.rightHandLandmarks) drawConnectors(canvasCtx, results.rightHandLandmarks, HAND_CONNECTIONS, {color: '#00CC00', lineWidth: 3});
             canvasCtx.restore();
 
-            // --- 2. 驅動 VRM 模型 ---
+            // 驅動 VRM 模型
             if (!currentVrm) return;
-
             if (results.faceLandmarks) {
                 const riggedFace = Kalidokit.Face.solve(results.faceLandmarks, { runtime: "mediapipe", video: videoElement });
                 rigRotation("neck", riggedFace.head, 0.7); 
                 rigRotation("head", riggedFace.head, 0.7); 
-                
                 currentVrm.expressionManager.setValue('blinkLeft', riggedFace.eye.l);
                 currentVrm.expressionManager.setValue('blinkRight', riggedFace.eye.r);
                 currentVrm.expressionManager.setValue('aa', riggedFace.mouth.shape.A);
@@ -162,7 +226,6 @@
                 currentVrm.expressionManager.setValue('ee', riggedFace.mouth.shape.E);
                 currentVrm.expressionManager.setValue('oh', riggedFace.mouth.shape.O);
             }
-
             const pose3D = results.ea || results.poseWorldLandmarks;
             if (pose3D && results.poseLandmarks) {
                 const riggedPose = Kalidokit.Pose.solve(pose3D, results.poseLandmarks, { runtime: "mediapipe", video: videoElement });
@@ -177,28 +240,45 @@
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
         });
         holistic.setOptions({
-            modelComplexity: 1, 
-            smoothLandmarks: true, 
-            minDetectionConfidence: 0.7, 
-            minTrackingConfidence: 0.7
+            modelComplexity: 1, smoothLandmarks: true, 
+            minDetectionConfidence: 0.7, minTrackingConfidence: 0.7
         });
         holistic.onResults(onResults);
 
-        startCameraButton.addEventListener('click', () => {
-            statusText.innerText = "攝影機啟動中... 請直視鏡頭！";
-            statusText.style.color = "#2563eb";
+        // 【iPad 相容性關鍵】使用原生 getUserMedia 取代 Camera Utils
+        startCameraButton.addEventListener('click', async () => {
+            statusText.innerText = "啟動攝影機中...";
             startCameraButton.disabled = true;
 
-            const cameraUtils = new Camera(videoElement, {
-                onFrame: async () => {
-                    await holistic.send({ image: videoElement });
-                },
-                width: 640,
-                height: 480
-            });
-            cameraUtils.start();
+            try {
+                // 要求取得視訊畫面 (iPad 會優先調用前置鏡頭 user)
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
+                });
+                videoElement.srcObject = stream;
+                await videoElement.play();
+
+                // 建立一個迴圈，持續將畫面送給 MediaPipe 辨識
+                async function sendFrameToHolistic() {
+                    if (!videoElement.paused && !videoElement.ended) {
+                        await holistic.send({ image: videoElement });
+                    }
+                    requestAnimationFrame(sendFrameToHolistic); // 下一幀繼續
+                }
+                
+                statusText.innerText = "動作捕捉中 🟢";
+                sendFrameToHolistic(); // 開始辨識迴圈
+
+            } catch (error) {
+                console.error("Camera error:", error);
+                statusText.innerText = "❌ 無法取得鏡頭權限！";
+                statusText.style.color = "red";
+                alert("請確認瀏覽器已允許使用攝影機權限！如果是 iPad Safari，請檢查網址列左側的設定。");
+                startCameraButton.disabled = false;
+            }
         });
 
+        // 處理視窗縮放
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();

@@ -1,0 +1,47 @@
+name: livestream_app
+description: 行動端直播 App（VRM 虛擬主播 + YouTube 推流 + 聊天室）
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # WebView：用於渲染 VRM (Three.js) 與 YouTube 聊天室頁面
+  flutter_inappwebview: ^6.0.0
+
+  # 本機儲存（金鑰、設定值）
+  shared_preferences: ^2.2.2
+
+  # 選圖片/影片做背景
+  file_picker: ^8.0.0
+
+  # 解壓縮 VRM 模型的 .zip
+  archive: ^3.6.1
+
+  # 路徑管理
+  path_provider: ^2.1.2
+
+  # 權限管理（鏡頭、麥克風、儲存空間）
+  permission_handler: ^11.3.0
+
+  # 鏡頭串流（人臉追蹤用，後續串接 MediaPipe / ARKit 原生橋接）
+  camera: ^0.10.5+9
+
+  # 狀態管理
+  provider: ^6.1.2
+
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/web/

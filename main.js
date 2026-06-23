@@ -1,109 +1,76 @@
-// 初始化變數
-let scene, camera, renderer, currentVrm, clock;
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { VRMLoaderPlugin } from '@pixiv/three-vrm';
 
-init3D();
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
 
-function init3D() {
-  const container = document.querySelector('.stream-container');
-  const canvas = document.querySelector('#canvas3d');
-  clock = new THREE.Clock();
+// 建立 9:16 相機
+const camera = new THREE.PerspectiveCamera(30, 9 / 16, 0.1, 20);
+camera.position.set(0, 1.4, 2.0); // 預設高度，後續會依據模型調整
 
-  // 1. 建立場景
-  scene = new THREE.Scene();
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+container.insertBefore(renderer.domElement, document.getElementById('chat-overlay'));
 
-  // 2. 建立相機 (配合 9:16 比例)
-  const width = container.clientWidth;
-  const height = container.clientHeight;
-  camera = new THREE.PerspectiveCamera(30, width / height, 0.1, 20.0);
-  camera.position.set(0.0, 1.4, 1.4); // 預設對準上半身與臉部
+// 光源
+const light = new THREE.DirectionalLight(0xffffff, 1.0);
+light.position.set(1.0, 1.0, 1.0).normalize();
+scene.add(light);
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-  // 3. 建立渲染器 (設定透明度，以便未來支援自訂背景圖)
-  renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
-  renderer.setSize(width, height);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.outputEncoding = THREE.sRGBEncoding;
+let currentVrm = null;
 
-  // 4. 加入光源
-  const light = new THREE.DirectionalLight(0xffxfff, 1.0);
-  light.position.set(1.0, 1.0, 1.0).normalize();
-  scene.add(light);
-  
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-  scene.add(ambientLight);
-
-  // 5. 啟動動畫循環
-  animate();
-
-  // 監聽視窗縮放
-  window.addEventListener('resize', onWindowResize);
-}
-
-// 動態更新畫布尺寸
-function onWindowResize() {
-  const container = document.querySelector('.stream-container');
-  const width = container.clientWidth;
-  const height = container.clientHeight;
-
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
-  renderer.setSize(width, height);
-}
-
-// 監聽檔案上傳
-document.getElementById('fileInput').addEventListener('change', (event) => {
+// 動態載入 VRM
+window.loadVRM = function(event) {
   const file = event.target.files[0];
   if (!file) return;
-
-  const blob = new Blob([file], { type: "application/octet-stream" });
-  const url = URL.createObjectURL(blob);
-
-  loadVRM(url);
-});
-
-// 載入 VRM 模型主函式
-function loadVRM(url) {
-  // 如果場景已有模型，先移除
-  if (currentVrm) {
-    scene.remove(currentVrm.scene);
-    THREE.VRMUtils.deepDispose(currentVrm.scene);
-  }
-
-  const loader = new THREE.GLTFLoader();
+  const url = URL.createObjectURL(file);
   
-  // 註冊三維 VRM 插件
-  loader.register((parser) => {
-    return new THREE_VRM.VRMLoaderPlugin(parser);
+  const loader = new GLTFLoader();
+  loader.register((parser) => new VRMLoaderPlugin(parser));
+  
+  loader.load(url, (gltf) => {
+    if (currentVrm) { scene.remove(currentVrm.scene); }
+    currentVrm = gltf.userData.vrm;
+    scene.add(currentVrm.scene);
+    
+    // 預設面部對齊中心：將相機對準頭部骨骼
+    const headNode = currentVrm.humanoid.getNormalizedBoneNode('head');
+    if (headNode) {
+      const headPos = new THREE.Vector3();
+      headNode.getWorldPosition(headPos);
+      camera.position.set(headPos.x, headPos.y, headPos.z + 1.2);
+      camera.lookAt(headPos);
+    }
   });
+};
 
-  loader.load(
-    url,
-    (gltf) => {
-      const vrm = gltf.userData.vrm;
-      currentVrm = vrm;
-      scene.add(vrm.scene);
+// 動態載入背景
+window.loadBackground = function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const textureLoader = new THREE.TextureLoader();
+  textureLoader.load(url, (texture) => {
+    scene.background = texture;
+  });
+};
 
-      // 修正模型朝向，使其面對相機
-      vrm.scene.rotation.y = Math.PI; 
-      
-      // 調整模型位置，讓鏡頭聚焦在胸部到頭部
-      vrm.scene.position.set(0, 0, 0);
-
-      console.log("VRM 載入成功:", vrm);
-    },
-    (progress) => console.log(`載入進度: ${(progress.loaded / progress.total * 100).toFixed(2)}%`),
-    (error) => console.error("載入失敗:", error)
-  );
-}
-
-// 每秒更新渲染
+// 渲染迴圈
+const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
-
   const deltaTime = clock.getDelta();
-  if (currentVrm) {
-    // 未來在這邊更新 MediaPipe / Kalidokit 的人臉追蹤數據
-    currentVrm.update(deltaTime);
-  }
-
+  if (currentVrm) currentVrm.update(deltaTime);
   renderer.render(scene, camera);
 }
+animate();
+
+// 視窗縮放適應
+window.addEventListener('resize', () => {
+  camera.aspect = container.clientWidth / container.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(container.clientWidth, container.clientHeight);
+});

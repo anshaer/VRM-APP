@@ -2,26 +2,65 @@
 <html lang="zh-TW">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VRoid Hub API VTuber Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VRoid Hub API VTuber System</title>
     <style>
-        body { margin: 0; background-color: #000; overflow: hidden; font-family: 'Urbanist', sans-serif; color: white; }
-        #app-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; background: #111; }
-        #viewport-916 { position: relative; width: 100%; max-height: 100%; aspect-ratio: 9 / 16; background: #222; border-radius: 15px; overflow: hidden; box-shadow: 0 0 50px rgba(0,0,0,0.8); }
+        /* 薄荷巧克力配色優化視覺與版面佈局 */
+        body { margin: 0; background-color: #121214; overflow: hidden; font-family: -apple-system, sans-serif; color: #e2e8f0; }
+        #app-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; background: #18181b; }
         
-        /* 浮動圖示選單 */
-        #floating-menu { position: absolute; top: 20px; right: 20px; z-index: 100; display: flex; gap: 12px; }
-        .icon-btn { width: 48px; height: 48px; background: rgba(255,255,255,0.15); backdrop-filter: blur(8px); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); transition: 0.3s; color: white; font-size: 18px; }
-        .icon-btn:hover { background: rgba(255,255,255,0.3); transform: scale(1.1); }
-        .icon-btn.active { background: #22c55e; box-shadow: 0 0 15px #22c55e; }
-
-        canvas#three-canvas { position: absolute; top:0; left:0; width:100%; height:100%; z-index: 2; }
+        /* 9:16 沉浸式手機直式比例展示容器 */
+        #viewport-916 { 
+            position: relative; width: 100%; max-height: 100%; aspect-ratio: 9 / 16; 
+            background: #27272a; border-radius: 16px; overflow: hidden; 
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); 
+        }
+        
+        /* 3D 渲染畫布圖層 */
+        canvas#three-canvas { position: absolute; top:0; left:0; width:100%; height:100%; z-index: 2; pointer-events: auto; }
+        
+        /* 自適應 HTML 背景圖片 */
         #bg-image { position: absolute; top:0; left:0; width:100%; height:100%; object-fit: cover; z-index: 1; display: none; }
-        #status { position: absolute; bottom: 20px; left: 20px; z-index: 100; font-weight: bold; text-shadow: 0 2px 4px black; opacity: 0.8; }
-        
+
+        /* 右上角仿官方懸浮半透明圖示選單 */
+        #floating-menu { position: absolute; top: 20px; right: 20px; z-index: 100; display: flex; gap: 12px; }
+        .icon-btn { 
+            width: 46px; height: 46px; background: rgba(24, 24, 27, 0.6); backdrop-filter: blur(10px); 
+            border-radius: 50%; display: flex; align-items: center; justify-content: center; 
+            cursor: pointer; border: 1px solid rgba(255,255,255,0.1); transition: all 0.25s ease; color: #fff; font-size: 18px; 
+        }
+        .icon-btn:hover { background: rgba(52, 211, 153, 0.3); border-color: #34d399; transform: scale(1.05); }
+        .icon-btn.active { background: #10b981; border-color: #a7f3d0; box-shadow: 0 0 15px rgba(16, 185, 129, 0.5); }
+
+        /* 左側即時滑塊調整面板（防死白過曝） */
+        #settings-panel {
+            position: absolute; top: 20px; left: 20px; z-index: 100;
+            background: rgba(24, 24, 27, 0.65); backdrop-filter: blur(10px);
+            padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);
+            width: 200px; display: flex; flex-direction: column; gap: 10px;
+        }
+        .slider-row { display: flex; flex-direction: column; gap: 4px; }
+        .slider-row label { font-size: 11px; color: #a1a1aa; display: flex; justify-content: space-between; }
+        .slider-row label span { color: #34d399; font-weight: bold; }
+        input[type="range"] { accent-color: #34d399; margin: 0; width: 100%; cursor: pointer; }
+
+        /* 下拉式雲端角色選擇清單 */
+        #model-dropdown-panel {
+            position: absolute; top: 76px; right: 20px; z-index: 100;
+            background: rgba(24, 24, 27, 0.85); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+            width: 220px; max-height: 250px; overflow-y: auto; display: none; padding: 6px 0;
+        }
+        .model-item { padding: 10px 14px; font-size: 13px; cursor: pointer; transition: 0.2s; color: #e4e4e7; }
+        .model-item:hover { background: rgba(52, 211, 153, 0.2); color: #34d399; }
+
+        /* 狀態文字與底部隱藏錄製流 */
+        #status-bar { position: absolute; bottom: 20px; left: 20px; z-index: 100; font-size: 12px; font-weight: 500; text-shadow: 0 2px 4px rgba(0,0,0,0.8); color: #a1a1aa; }
         video#hidden-video { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/kalidokit@1.1.5/dist/kalidokit.umd.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
@@ -29,18 +68,28 @@
 
 <div id="app-container">
     <div id="viewport-916">
-        <img id="bg-image" src="">
-        <div id="floating-menu">
-            <div class="icon-btn" id="btn-login" title="VRoid Hub 登入"><i class="fa-solid fa-user-astronaut"></i></div>
-            <div class="icon-btn" id="btn-bg" title="更換背景"><i class="fa-solid fa-image"></i></div>
-            <div class="icon-btn" id="btn-face" title="動作追蹤"><i class="fa-solid fa-face-viewfinder"></i></div>
+        <img id="bg-image" src="" alt="背景圖">
+        
+        <div id="settings-panel">
+            <div class="slider-row"><label>陰影補光 <span id="lbl-ambient">0.6</span></label><input type="range" id="sld-ambient" min="0" max="2" step="0.1" value="0.6"></div>
+            <div class="slider-row"><label>主光強度 <span id="lbl-dir">1.0</span></label><input type="range" id="sld-dir" min="0" max="3" step="0.1" value="1.0"></div>
+            <div class="slider-row"><label>相機曝光 <span id="lbl-exp">0.8</span></label><input type="range" id="sld-exp" min="0" max="2" step="0.1" value="0.8"></div>
         </div>
-        <div id="status">VRoid Hub API VTuber Pro Ready</div>
+
+        <div id="floating-menu">
+            <div class="icon-btn" id="btn-auth" title="連接 VRoid Hub"><i class="fa-solid fa-user-astronaut"></i></div>
+            <div class="icon-btn" id="btn-bg" title="更換背景圖片"><i class="fa-solid fa-image"></i></div>
+            <div class="icon-btn" id="btn-track" title="啟動動態捕捉"><i class="fa-solid fa-face-viewfinder"></i></div>
+        </div>
+
+        <div id="model-dropdown-panel" id="model-list"></div>
+
+        <div id="status-bar">系統初始化中...</div>
         <video id="hidden-video" playsinline autoplay muted></video>
     </div>
 </div>
 
-<input type="file" id="bg-input" accept="image/*" style="display:none;">
+<input type="file" id="bg-file-input" accept="image/*" style="display:none;">
 
 <script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 <script type="importmap">
@@ -59,123 +108,321 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { VRMLoaderPlugin } from '@pixiv/three-vrm';
 
-    const CLIENT_ID = '您的_CLIENT_ID'; // 請替換為您的 Client ID
-    let currentVrm = null, isTracking = false;
-    const statusEl = document.getElementById('status');
-    const video = document.getElementById('hidden-video');
+    // ===================================================
+    // 🛠️ 配置設定區（請根據實際部署填寫）
+    // ===================================================
+    const CLIENT_ID = 'LD-dUWDyrpIz-n-DBX5vWlIn8nbobqA7ecblhsm77VE'; 
+    const GCP_FUNCTION_URL = 'https://您的區域-您的專案.cloudfunctions.net/vroidTokenExchange';
+    const REDIRECT_URI = window.location.origin + window.location.pathname;
 
-    // --- 3D 場景 ---
-    const scene = new THREE.Scene();
+    let currentVrm = null, isTracking = false, accessToken = null;
+    const video = document.getElementById('hidden-video');
+    const statusBar = document.getElementById('status-bar');
     const viewport = document.getElementById('viewport-916');
-    const camera = new THREE.PerspectiveCamera(35, 9/16, 0.1, 100);
-    camera.position.set(0, 1.4, 3);
+
+    // ===================================================
+    // 1. 初始化 3D 渲染引擎與防死白視覺設定
+    // ===================================================
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(35, 9 / 16, 0.1, 100);
+    camera.position.set(0, 1.4, 2.5);
     
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+    renderer.setClearColor(0x000000, 0);
+    
+    // 開啟 ACES 電影級調色映射，從根本杜絕過曝
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.8;
     renderer.domElement.id = 'three-canvas';
     viewport.appendChild(renderer.domElement);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    dirLight.position.set(1, 2, 1);
+    dirLight.position.set(1.0, 2.0, 1.0).normalize();
     scene.add(dirLight);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 1.3, 0);
+    controls.update();
 
-    // --- OAuth 授權邏輯 (PKCE 簡化版) ---
-    document.getElementById('btn-login').addEventListener('click', () => {
-        statusEl.innerText = "正在前往 VRoid Hub...";
-        // 實務上在此呼叫跳轉授權
-        // window.location.href = `https://hub.vroid.com/oauth/authorize?client_id=${CLIENT_ID}&response_type=code...`;
-    });
+    // 監聽容器自適應縮放
+    new ResizeObserver(() => {
+        camera.aspect = viewport.clientWidth / viewport.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+    }).observe(viewport);
 
-    // --- 動作捕捉修正版 ---
-    const holistic = new Holistic({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}` });
-    holistic.setOptions({ modelComplexity: 1, smoothLandmarks: true });
+    // 視覺拉桿同步控制
+    const setupSlider = (sliderId, labelId, callback) => {
+        document.getElementById(sliderId).addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            document.getElementById(labelId).innerText = val.toFixed(1);
+            callback(val);
+        });
+    };
+    setupSlider('sld-ambient', 'lbl-ambient', (v) => ambientLight.intensity = v);
+    setupSlider('sld-dir', 'lbl-dir', (v) => dirLight.intensity = v);
+    setupSlider('sld-exp', 'lbl-exp', (v) => renderer.toneMappingExposure = v);
+
+    // ===================================================
+    // 2. VRoid Hub API 雲端連線架構 (OAuth 2.0 授權)
+    // ===================================================
     
-    holistic.onResults((results) => {
-        if (!currentVrm || !results.faceLandmarks) return;
-        
-        const face = Kalidokit.Face.solve(results.faceLandmarks, { runtime: "mediapipe", imageSize: { width: 640, height: 480 } });
-        
-        // 頭部與頸部
-        const rig = (bone, rot) => {
-            const b = currentVrm.humanoid.getNormalizedBoneNode(bone);
-            if (b) b.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(rot.x, rot.y, rot.z)), 0.1);
-        };
-        rig('head', face.head); rig('neck', face.head);
-        
-        // 眨眼判定修正 (反轉邏輯)
-        currentVrm.expressionManager.setValue('blinkLeft', face.eye.l < 0.5 ? 1 : 0);
-        currentVrm.expressionManager.setValue('blinkRight', face.eye.r < 0.5 ? 1 : 0);
-        currentVrm.expressionManager.setValue('aa', face.mouth.shape.A);
-    });
+    // 檢查網址列是否有授權返回的代碼 (Callback Code)
+    const urlParams = new URLSearchParams(window.location.search);
+    const authCode = urlParams.get('code');
 
-    document.getElementById('btn-face').addEventListener('click', async function() {
-        if (!isTracking) {
-            statusEl.innerText = "追蹤啟動中...";
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-            video.srcObject = stream;
-            await video.play();
-            isTracking = true;
-            this.classList.add('active');
-            const loop = async () => { if (isTracking) { await holistic.send({ image: video }); requestAnimationFrame(loop); } };
-            loop();
+    window.addEventListener('DOMContentLoaded', async () => {
+        accessToken = sessionStorage.getItem('vrm_access_token');
+        if (authCode) {
+            statusBar.innerText = "⏳ 正在經由 Google Cloud 交換通行證...";
+            window.history.replaceState({}, document.title, window.location.pathname); // 清理網址列
+            await exchangeCodeForToken(authCode);
+        } else if (accessToken) {
+            statusBar.innerText = "🟢 已連接雲端帳戶";
+            document.getElementById('btn-auth').classList.add('active');
+            fetchUserCharacters();
         } else {
-            isTracking = false;
-            this.classList.remove('active');
-            statusEl.innerText = "追蹤已停止";
+            statusBar.innerText = "💡 請點擊太空人圖示登入 VRoid Hub";
         }
     });
 
-    // --- A-Pose 初始化載入器 ---
+    document.getElementById('btn-auth').addEventListener('click', () => {
+        if (accessToken) {
+            // 已登入狀態，點擊則切換顯示角色清單
+            const panel = document.getElementById('model-dropdown-panel');
+            panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+        } else {
+            // 未登入，導向官方授權頁面
+            const authUrl = `https://hub.vroid.com/oauth/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=default`;
+            window.location.href = authUrl;
+        }
+    });
+
+    // 透過 GCP Cloud Functions 交換金鑰
+    async function exchangeCodeForToken(code) {
+        try {
+            const res = await fetch(GCP_FUNCTION_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code, redirect_uri: REDIRECT_URI })
+            });
+            const data = await res.json();
+            if (data.access_token) {
+                accessToken = data.access_token;
+                sessionStorage.setItem('vrm_access_token', accessToken);
+                statusBar.innerText = "🟢 登入成功！正在讀取模型...";
+                document.getElementById('btn-auth').classList.add('add');
+                fetchUserCharacters();
+            } else {
+                throw new Error(data.error || 'Token 交換失敗');
+            }
+        } catch (err) {
+            statusBar.innerText = "❌ 聯動失敗：" + err.message;
+        }
+    }
+
+    // 抓取使用者的 3D 角色清單
+    async function fetchUserCharacters() {
+        try {
+            const res = await fetch('https://hub.vroid.com/api/me/characters', {
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'X-Api-Version': '11' }
+            });
+            const data = await res.json();
+            populateModelDropdown(data.data);
+        } catch (err) {
+            statusBar.innerText = "❌ 無法獲取角色列表";
+        }
+    }
+
+    // 將角色清單渲染至下拉選單
+    function populateModelDropdown(characters) {
+        const panel = document.getElementById('model-dropdown-panel');
+        panel.innerHTML = '';
+        if(!characters || characters.length === 0) {
+            panel.innerHTML = '<div class="model-item">雲端查無可用模型</div>';
+            return;
+        }
+        characters.forEach(char => {
+            const item = document.createElement('div');
+            item.className = 'model-item';
+            item.innerText = char.name || '未命名角色';
+            item.addEventListener('click', () => {
+                panel.style.display = 'none';
+                loadVRMFromHub(char.id);
+            });
+            panel.appendChild(item);
+        });
+    }
+
+    // 自雲端請求下載權限並載入模型
+    async function loadVRMFromHub(characterId) {
+        statusBar.innerText = "⏳ 正在自雲端下載模型授權...";
+        try {
+            // 呼叫官方下載請求端點
+            const res = await fetch(`https://hub.vroid.com/api/characters/${characterId}/models/latest/download`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'X-Api-Version': '11' }
+            });
+            if(res.status === 403) {
+                alert("該模型作者未開放第三方應用程式下載讀取頭像功能！");
+                return;
+            }
+            const blob = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            loadVRM(blobUrl);
+        } catch (err) {
+            statusBar.innerText = "❌ 下載模型發生錯誤";
+        }
+    }
+
+    // ===================================================
+    // 3. A-Pose 預設姿勢載入核心
+    // ===================================================
     const vrmLoader = new GLTFLoader();
     vrmLoader.register((parser) => new VRMLoaderPlugin(parser));
 
-    const loadVRMFromUrl = (url) => {
+    function loadVRM(url) {
+        statusBar.innerText = "⏳ 3D 引擎最佳化編譯中...";
         vrmLoader.load(url, (gltf) => {
             if (currentVrm) scene.remove(currentVrm.scene);
             currentVrm = gltf.userData.vrm;
-            currentVrm.scene.rotation.y = Math.PI;
+            currentVrm.scene.rotation.y = Math.PI; // 轉向正面
             
-            // A-Pose 修正
-            const lArm = currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm');
-            const rArm = currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm');
-            if (lArm) lArm.rotation.z = Math.PI / 4.5;
-            if (rArm) rArm.rotation.z = -Math.PI / 4.5;
-            
-            scene.add(currentVrm.scene);
-            statusEl.innerText = "角色載入成功";
-        });
-    };
+            // ⭐ A-Pose 初始化修正：大臂各向下偏轉 40 度，外觀更加優雅自然 ⭐
+            const leftArm = currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm');
+            const rightArm = currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+            if (leftArm) leftArm.rotation.z = Math.PI / 4.5;
+            if (rightArm) rightArm.rotation.z = -Math.PI / 4.5;
 
-    // 背景更換
-    document.getElementById('btn-bg').addEventListener('click', () => document.getElementById('bg-input').click());
-    document.getElementById('bg-input').addEventListener('change', (e) => {
+            scene.add(currentVrm.scene);
+            statusBar.innerText = "✨ 雲端角色已就緒，請開啟動捕鏡頭！";
+        }, 
+        undefined, 
+        (err) => statusBar.innerText = "❌ 載入 3D 模型結構失敗。");
+    }
+
+    // ===================================================
+    // 4. MediaPipe + Kalidokit 動作連動（支援 iPad補丁）
+    // ===================================================
+    const holistic = new Holistic({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}` });
+    holistic.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+    
+    holistic.onResults((results) => {
+        if (!currentVrm) return;
+
+        // 臉部表情與眼睛連動處理
+        if (results.faceLandmarks && video.videoWidth > 0) {
+            const face = Kalidokit.Face.solve(results.faceLandmarks, { 
+                runtime: "mediapipe", 
+                imageSize: { width: video.videoWidth, height: video.videoHeight } 
+            });
+            
+            // 平滑套用頭部、頸部旋轉
+            const rig = (boneName, rads) => {
+                const node = currentVrm.humanoid.getNormalizedBoneNode(boneName);
+                if (node) node.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(rads.x, rads.y, rads.z)), 0.15);
+            };
+            rig('head', face.head);
+            rig('neck', face.head);
+
+            // 眨眼二分法閾值反轉優化，杜絕抖動
+            const isLClosed = face.eye.l < 0.55 ? 1 : 0;
+            const isRClosed = face.eye.r < 0.55 ? 1 : 0;
+            currentVrm.expressionManager.setValue('blinkLeft', isLClosed);
+            currentVrm.expressionManager.setValue('blinkRight', isRClosed);
+
+            // 嘴形動態線性對應
+            currentVrm.expressionManager.setValue('aa', face.mouth.shape.A);
+            currentVrm.expressionManager.setValue('ih', face.mouth.shape.I);
+            currentVrm.expressionManager.setValue('ou', face.mouth.shape.U);
+            currentVrm.expressionManager.setValue('ee', face.mouth.shape.E);
+            currentVrm.expressionManager.setValue('oh', face.mouth.shape.O);
+        }
+
+        // 上半身肢體關節連動處理
+        const pose3D = results.poseWorldLandmarks || results.ea;
+        if (pose3D && results.poseLandmarks && video.videoWidth > 0) {
+            const pose = Kalidokit.Pose.solve(pose3D, results.poseLandmarks, { 
+                runtime: "mediapipe", 
+                imageSize: { width: video.videoWidth, height: video.videoHeight } 
+            });
+            if (pose) {
+                const rigBone = (bone, rot) => {
+                    const n = currentVrm.humanoid.getNormalizedBoneNode(bone);
+                    if (n && rot) n.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(rot.x, rot.y, rot.z)), 0.2);
+                };
+                rigBone("rightUpperArm", pose.RightUpperArm);
+                rigBone("rightLowerArm", pose.RightLowerArm);
+                rigBone("leftUpperArm", pose.LeftUpperArm);
+                rigBone("leftLowerArm", pose.LeftLowerArm);
+                rigBone("spine", pose.Spine);
+            }
+        }
+    });
+
+    // 鏡頭開關切換邏輯（解決 iOS 罷工機制）
+    document.getElementById('btn-track').addEventListener('click', async function() {
+        if (!window.isSecureContext) {
+            alert("動作捕捉功能硬性規定必須在 HTTPS 安全連線環境下運作！");
+            return;
+        }
+
+        if (!isTracking) {
+            statusBar.innerText = "⏳ 正在喚醒 iPad/PC 前置鏡頭...";
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = async () => {
+                    await video.play();
+                    isTracking = true;
+                    document.getElementById('btn-track').classList.add('active');
+                    statusBar.innerText = "🟢 動態追蹤即時運作中！";
+                    
+                    // 迴圈追蹤分析架構
+                    async function trackingLoop() {
+                        if (isTracking) {
+                            await holistic.send({ image: video });
+                            requestAnimationFrame(trackingLoop);
+                        }
+                    }
+                    trackingLoop();
+                };
+            } catch (err) {
+                statusBar.innerText = "❌ 鏡頭啟動失敗";
+                alert("未獲得相機使用權限！");
+            }
+        } else {
+            isTracking = false;
+            document.getElementById('btn-track').classList.remove('active');
+            if (video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
+            statusBar.innerText = "⏸️ 追蹤已暫停";
+        }
+    });
+
+    // ===================================================
+    // 5. 沉浸式 UI：更換背景功能
+    // ===================================================
+    document.getElementById('btn-bg').addEventListener('click', () => document.getElementById('bg-file-input').click());
+    document.getElementById('bg-file-input').addEventListener('change', (e) => {
         const file = e.target.files[0];
+        if (!file) return;
         const img = document.getElementById('bg-image');
         img.src = URL.createObjectURL(file);
         img.style.display = 'block';
     });
 
+    // 3. 渲染主循環
     const clock = new THREE.Clock();
-    function animate() {
-        requestAnimationFrame(animate);
+    function renderFrame() {
+        requestAnimationFrame(renderFrame);
         if (currentVrm) currentVrm.update(clock.getDelta());
         renderer.render(scene, camera);
     }
-    animate();
-
-    // 視窗縮放
-    window.addEventListener('resize', () => {
-        renderer.setSize(viewport.clientWidth, viewport.clientHeight);
-        camera.aspect = viewport.clientWidth / viewport.clientHeight;
-        camera.updateProjectionMatrix();
-    });
+    renderFrame();
 </script>
 </body>
 </html>
-
-這份程式碼已經將您所有的願景整合在一起了。祝您開發順利！

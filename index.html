@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="utf-8">
+    <title>VRM 動作捕捉網頁</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #333; font-family: sans-serif; }
+        #ui-container { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(255,255,255,0.8); padding: 15px; border-radius: 8px; }
+        #video-container { position: absolute; bottom: 10px; left: 10px; z-index: 10; border: 2px solid #fff; border-radius: 8px; overflow: hidden; }
+        video { display: block; width: 320px; height: 240px; transform: scaleX(-1); /* 鏡像翻轉 */ }
+        button, input { margin-top: 10px; font-size: 14px; }
+    </style>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/kalidokit@1.1.5/dist/kalidokit.umd.js"></script>
+</head>
+<body>
+    <div id="ui-container">
+        <h3>VRM Web VTuber</h3>
+        <label>1. 選擇本地 VRM 檔案：</label><br>
+        <input type="file" id="vrm-upload" accept=".vrm"><br>
+        <button id="start-camera" disabled>2. 啟動攝影機</button>
+        <div id="status">請先載入模型...</div>
+    </div>
+
+    <div id="video-container">
+        <video id="video" autoplay playsinline></video>
+    </div>
+
+    <script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.154.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.154.0/examples/jsm/",
+          "@pixiv/three-vrm": "https://unpkg.com/@pixiv/three-vrm@2.0.0/lib/three-vrm.module.js"
+        }
+      }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { VRMLoaderPlugin } from '@pixiv/three-vrm';
+
+        let currentVrm = null;
+        const videoElement = document.getElementById('video');
+        const startCameraButton = document.getElementById('start-camera');
+        const statusText = document.getElementById('status');
+
+        // ==========================================
+        // [階段一] 設定 3D 場景與載入 VRM
+        // ==========================================
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 1.3, 3);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const light = new THREE.DirectionalLight(0xffffff, 2.0);
+        light.position.set(1, 1, 1).normalize();
+        scene.add(light);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 1.3, 0);
+
+        const loader = new GLTFLoader();
+        loader.register((parser) => new VRMLoaderPlugin(parser));
+
+        // 監聽上傳檔案
+        document.getElementById('vrm-upload').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            statusText.innerText = "載入模型中...";
+            const url = URL.createObjectURL(file);
+
+            loader.load(url, (gltf) => {
+                if (currentVrm) scene.remove(currentVrm.scene); // 移除舊模型
+                
+                currentVrm = gltf.userData.vrm;
+                currentVrm.scene.rotation.y = Math.PI; // 轉向正面
+                scene.add(currentVrm.scene);
+
+                statusText.innerText = "模型載入成功！可以啟動攝影機了。";
+                startCameraButton.disabled = false; // 解鎖攝影機按鈕
+            });
+        });
+
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            if (currentVrm) currentVrm.update(clock.getDelta());
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // ==========================================
+        // [階段二] 動作捕捉與骨骼連動 (Kalidokit + MediaPipe)
+        // ==========================================
+
+        // 將 Kalidokit 算出的旋轉角度套用到 VRM 骨骼上
+        const rigRotation = (boneName, rads, damp = 1, slerp = 0.1) => {
+            if (!currentVrm || !rads) return;
+            const boneNode = currentVrm.humanoid.getNormalizedBoneNode(boneName);
+            if (!boneNode) return;
+            
+            // 轉換歐拉角為四元數並進行平滑內插
+            const euler = new THREE.Euler(rads.x * damp, rads.y * damp, rads.z * damp);
+            const quaternion = new THREE.Quaternion().setFromEuler(euler);
+            boneNode.quaternion.slerp(quaternion, slerp);
+        };
+
+        // MediaPipe 分析完畢後會呼叫這個函數
+        const onResults = (results) => {
+            if (!currentVrm) return;
+
+            // 1. 臉部與頭部追蹤
+            if (results.faceLandmarks) {
+                const riggedFace = Kalidokit.Face.solve(results.faceLandmarks, { runtime: "mediapipe", video: videoElement });
+                rigRotation("neck", riggedFace.head, 0.7); // 頸部
+                rigRotation("head", riggedFace.head, 0.7); // 頭部
+                
+                // 控制眨眼與嘴型 (Blendshapes)
+                const presetName = currentVrm.expressionManager.expressionMap;
+                currentVrm.expressionManager.setValue('blinkLeft', riggedFace.eye.l);
+                currentVrm.expressionManager.setValue('blinkRight', riggedFace.eye.r);
+                currentVrm.expressionManager.setValue('aa', riggedFace.mouth.shape.A);
+                currentVrm.expressionManager.setValue('ih', riggedFace.mouth.shape.I);
+                currentVrm.expressionManager.setValue('ou', riggedFace.mouth.shape.U);
+                currentVrm.expressionManager.setValue('ee', riggedFace.mouth.shape.E);
+                currentVrm.expressionManager.setValue('oh', riggedFace.mouth.shape.O);
+            }
+
+            // 2. 身體動作追蹤
+            // 注意：MediaPipe 早期版本屬性名可能是 pose3DLandmarks 或 ea，依賴具體版本
+            const pose3D = results.ea || results.poseWorldLandmarks;
+            if (pose3D && results.poseLandmarks) {
+                const riggedPose = Kalidokit.Pose.solve(pose3D, results.poseLandmarks, { runtime: "mediapipe", video: videoElement });
+                
+                rigRotation("rightUpperArm", riggedPose.RightUpperArm, 1, 0.3);
+                rigRotation("rightLowerArm", riggedPose.RightLowerArm, 1, 0.3);
+                rigRotation("leftUpperArm", riggedPose.LeftUpperArm, 1, 0.3);
+                rigRotation("leftLowerArm", riggedPose.LeftLowerArm, 1, 0.3);
+            }
+        };
+
+        // 初始化 MediaPipe Holistic
+        const holistic = new Holistic({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+        });
+        holistic.setOptions({
+            modelComplexity: 1, smoothLandmarks: true, 
+            minDetectionConfidence: 0.7, minTrackingConfidence: 0.7
+        });
+        holistic.onResults(onResults);
+
+        // 綁定攝影機啟動按鈕
+        startCameraButton.addEventListener('click', () => {
+            statusText.innerText = "攝影機啟動中... 準備好擺姿勢！";
+            startCameraButton.disabled = true;
+
+            const cameraUtils = new Camera(videoElement, {
+                onFrame: async () => {
+                    await holistic.send({ image: videoElement });
+                },
+                width: 640,
+                height: 480
+            });
+            cameraUtils.start();
+        });
+
+        // 視窗縮放處理
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

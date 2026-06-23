@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>VRM Live Stream</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #1a0f0a; /* 深色底 */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    /* 核心 9:16 直播畫布容器 */
+    .stream-container {
+      position: relative;
+      width: 100%;
+      max-width: 450px; /* 模擬手機寬度上限 */
+      aspect-ratio: 9 / 16;
+      background-color: #4b2e1b; /* 經典巧克力色背景 */
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+    #canvas3d {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    /* 檔案選擇器樣式 */
+    .upload-btn {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background-color: #98FF98; /* 薄荷綠 */
+      color: #4b2e1b;
+      padding: 10px 16px;
+      border-radius: 20px;
+      font-weight: bold;
+      cursor: pointer;
+      z-index: 10;
+    }
+    #fileInput { display: none; }
+  </style>
+</head>
+<body>
+
+  <div class="stream-container">
+    <label class="upload-btn" for="fileInput">載入 VRM 模型</label>
+    <input type="file" id="fileInput" accept=".vrm">
+    <canvas id="canvas3d"></canvas>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@1.0.0/lib/three-vrm.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

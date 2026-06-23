@@ -2,112 +2,51 @@
 <html lang="zh-TW">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>VRM 動態捕捉 - 專業完整版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VRoid Hub API Immersive VTuber</title>
     <style>
-        /* ================= 全局與版面佈局 ================= */
-        body { margin: 0; display: flex; height: 100vh; background-color: #1a1a1a; font-family: sans-serif; overflow: hidden; }
+        body { margin: 0; background-color: #000; overflow: hidden; font-family: sans-serif; }
+        #render-area { width: 100vw; height: 100vh; position: relative; }
         
-        /* 左側 UI 控制面板 */
-        #ui-panel {
-            width: 320px; background: #f8fafc; padding: 20px; box-sizing: border-box;
-            display: flex; flex-direction: column; overflow-y: auto; z-index: 10;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+        /* 懸浮控制選單 */
+        #floating-menu {
+            position: absolute; top: 20px; right: 20px; z-index: 100;
+            display: flex; gap: 15px;
         }
+        .icon-btn {
+            width: 45px; height: 45px; background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(5px); border-radius: 50%; color: white;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; border: 1px solid rgba(255,255,255,0.3); transition: 0.3s;
+        }
+        .icon-btn:hover { background: rgba(255,255,255,0.4); transform: scale(1.1); }
+        .icon-btn.active { background: #22c55e; border-color: #fff; }
 
-        /* 右側 3D 展示區 */
-        #render-area {
-            flex: 1; display: flex; justify-content: center; align-items: center;
-            padding: 20px; box-sizing: border-box; background: #27272a;
-        }
-
-        /* 9:16 顯示容器 (模擬手機直式比例) */
-        #viewport-916 {
-            position: relative; width: 100%; max-height: 100%; aspect-ratio: 9 / 16;
-            background-color: #333; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-        }
-
-        /* HTML 背景圖 (放在 3D 畫布底層) */
-        #bg-image {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; z-index: 1; display: none;
-        }
+        /* 背景與畫布圖層 */
+        #bg-image { position: absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:1; }
+        canvas#three-canvas { position: absolute; top:0; left:0; width:100%; height:100%; z-index:2; }
         
-        /* 3D 畫布 (放在背景圖上層，允許滑鼠拖拉) */
-        canvas#three-canvas {
-            position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important;
-            z-index: 2; pointer-events: auto; 
-        }
-
-        /* ================= UI 元件樣式 ================= */
-        .control-group { margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #cbd5e1; }
-        h3 { margin-top: 0; color: #1e293b; font-size: 18px; }
-        label.section-title { font-weight: bold; color: #334155; display: block; margin-bottom: 5px; font-size: 14px; }
-        button, input[type="file"] { width: 100%; margin-top: 5px; padding: 8px; font-size: 13px; box-sizing: border-box; }
-        button { background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        button:disabled { background: #94a3b8; cursor: not-allowed; }
-        .slider-row { display: flex; flex-direction: column; margin-top: 8px; }
-        .slider-row label { font-size: 12px; color: #475569; display: flex; justify-content: space-between; }
-        input[type="range"] { width: 100%; margin-top: 4px; }
-
-        /* ================= 鏡頭與除錯區 (左下角) ================= */
-        #debug-container {
-            margin-top: auto; border: 2px solid #cbd5e1; border-radius: 8px; overflow: hidden;
-            background: #000; width: 100%; aspect-ratio: 4/3; position: relative;
-        }
-        
-        /* ⚠️ 【iOS 鏡頭不罷工關鍵】 利用透明度隱藏真實影片，確保瀏覽器持續渲染抓取長寬 */
-        video#video { 
-            position: absolute; opacity: 0; width: 1px; height: 1px; z-index: -1; pointer-events: none; 
-        } 
-        canvas.output_canvas { width: 100%; height: 100%; display: block; transform: scaleX(-1); object-fit: cover; }
+        /* 隱藏的攝影機與除錯區 */
+        #hidden-camera { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+        #status-msg { position: absolute; bottom: 20px; left: 20px; color: white; z-index: 100; font-size: 14px; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
     </style>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/kalidokit@1.1.5/dist/kalidokit.umd.js"></script>
+    <script src="https://kit.fontawesome.com/your-font-awesome-key.js" crossorigin="anonymous"></script> <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
 
-    <div id="ui-panel">
-        <h3>⚙️ 控制面板</h3>
-        
-        <div class="control-group">
-            <label class="section-title">1. 載入資源</label>
-            <label style="font-size:12px;">模型 (.vrm):</label>
-            <input type="file" id="vrm-upload" accept=".vrm">
-            <label style="font-size:12px; margin-top:8px; display:block;">背景圖片 (9:16 最佳):</label>
-            <input type="file" id="bg-upload" accept="image/*">
-        </div>
-
-        <div class="control-group">
-            <label class="section-title">2. 畫面調整 (防死白)</label>
-            <div class="slider-row"><label>陰影補光: <span id="ambient-val">0.6</span></label><input type="range" id="ambient-slider" min="0" max="2" step="0.1" value="0.6"></div>
-            <div class="slider-row"><label>主要光源: <span id="dir-val">1.0</span></label><input type="range" id="dir-slider" min="0" max="3" step="0.1" value="1.0"></div>
-            <div class="slider-row"><label>相機曝光: <span id="exp-val">0.8</span></label><input type="range" id="exp-slider" min="0" max="3" step="0.1" value="0.8"></div>
-        </div>
-
-        <div class="control-group">
-            <label class="section-title">3. 啟動捕捉</label>
-            <button id="start-camera" disabled>啟動攝影機</button>
-            <div id="status" style="margin-top: 10px; font-size: 13px; font-weight: bold; color: #d97706;">請先載入 VRM 模型</div>
-        </div>
-
-        <label class="section-title">鏡頭預覽</label>
-        <div id="debug-container">
-            <video id="video" playsinline autoplay muted></video>
-            <canvas class="output_canvas" id="output-canvas"></canvas>
-        </div>
-    </div>
-
     <div id="render-area">
-        <div id="viewport-916">
-            <img id="bg-image" src="" alt="">
+        <img id="bg-image" src="" style="display:none;">
+        <div id="floating-menu">
+            <div class="icon-btn" id="login-hub" title="登入 VRoid Hub"><i class="fa-solid fa-user-circle"></i></div>
+            <div class="icon-btn" id="toggle-bg" title="切換背景"><i class="fa-solid fa-image"></i></div>
+            <div class="icon-btn" id="toggle-camera" title="開啟臉部追蹤"><i class="fa-solid fa-face-viewfinder"></i></div>
         </div>
+        <div id="status-msg">正在初始化...</div>
+        <video id="hidden-camera" playsinline autoplay muted></video>
     </div>
 
-    <script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
     <script type="importmap">
       {
         "imports": {
@@ -124,44 +63,77 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { VRMLoaderPlugin } from '@pixiv/three-vrm';
 
-        let currentVrm = null;
-        const videoElement = document.getElementById('video');
-        const canvasElement = document.getElementById('output-canvas');
-        const canvasCtx = canvasElement.getContext('2d');
-        const statusText = document.getElementById('status');
-        const viewport = document.getElementById('viewport-916');
+        const CLIENT_ID = 'YOUR_CLIENT_ID_HERE'; // 請填入您的 VRoid Hub Client ID
+        let currentVrm = null, isTracking = false;
+        const video = document.getElementById('hidden-camera');
+        const status = document.getElementById('status-msg');
 
-        // ==========================================
-        // 1. 初始化 3D 場景
-        // ==========================================
+        // --- 1. Three.js 場景設定 ---
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(35, viewport.clientWidth / viewport.clientHeight, 0.1, 1000);
-        camera.position.set(0, 1.3, 3);
-
+        const camera = new THREE.PerspectiveCamera(30, window.innerWidth/window.innerHeight, 0.1, 100);
+        camera.position.set(0, 1.4, 3);
+        
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.domElement.id = 'three-canvas';
-        renderer.setSize(viewport.clientWidth, viewport.clientHeight);
-        renderer.setClearColor(0x000000, 0); 
+        renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 0.8;
-        viewport.appendChild(renderer.domElement);
+        renderer.domElement.id = 'three-canvas';
+        document.getElementById('render-area').appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        scene.add(ambientLight);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-        directionalLight.position.set(1.0, 2.0, 1.0).normalize();
-        scene.add(directionalLight);
+        const light = new THREE.DirectionalLight(0xffffff, 1.0);
+        light.position.set(1, 2, 1).normalize();
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.target.set(0, 1.3, 0);
 
-        // 自適應容器大小
-        new ResizeObserver(() => {
-            camera.aspect = viewport.clientWidth / viewport.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(viewport.clientWidth, viewport.clientHeight);
-        }).observe(viewport);
+        // --- 2. VRoid Hub API & OAuth 核心架構 ---
+        // 注意：此部分需要處理 Redirect URI 邏輯
+        document.getElementById('login-hub').addEventListener('click', () => {
+            // 這裡應執行 OAuth 重定向，此處僅為邏輯示範
+            status.innerText = "正在前往 VRoid Hub 授權頁面...";
+            // window.location.href = `https://hub.vroid.com/oauth/authorize?client_id=${CLIENT_ID}&response_type=code...`;
+        });
 
+        // --- 3. 動作捕捉控制 (Face Icon 功能) ---
+        const holistic = new Holistic({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}` });
+        holistic.setOptions({ modelComplexity: 1, smoothLandmarks: true });
+        
+        holistic.onResults((results) => {
+            if (!currentVrm || !results.faceLandmarks) return;
+            const riggedFace = Kalidokit.Face.solve(results.faceLandmarks, { runtime: "mediapipe", imageSize: { width: 640, height: 480 } });
+            
+            // 應用旋轉與表情
+            const head = currentVrm.humanoid.getNormalizedBoneNode('head');
+            if (head) head.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(riggedFace.head.x, riggedFace.head.y, riggedFace.head.z)), 0.1);
+            
+            // 眨眼反轉邏輯
+            currentVrm.expressionManager.setValue('blinkLeft', riggedFace.eye.l < 0.5 ? 1 : 0);
+            currentVrm.expressionManager.setValue('blinkRight', riggedFace.eye.r < 0.5 ? 1 : 0);
+            currentVrm.expressionManager.setValue('aa', riggedFace.mouth.shape.A);
+        });
+
+        document.getElementById('toggle-camera').addEventListener('click', async function() {
+            if (!isTracking) {
+                status.innerText = "啟動追蹤中...";
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                video.play();
+                isTracking = true;
+                this.classList.add('active');
+                
+                async function loop() {
+                    if (isTracking) { await holistic.send({ image: video }); requestAnimationFrame(loop); }
+                }
+                loop();
+            } else {
+                isTracking = false;
+                this.classList.remove('active');
+                status.innerText = "追蹤已停止";
+            }
+        });
+
+        // --- 渲染迴圈 ---
         const clock = new THREE.Clock();
         function animate() {
             requestAnimationFrame(animate);
@@ -170,194 +142,15 @@
         }
         animate();
 
-        // ==========================================
-        // 2. 載入模型與 UI 綁定
-        // ==========================================
-        const loader = new GLTFLoader();
-        loader.register((parser) => new VRMLoaderPlugin(parser));
-
-        document.getElementById('vrm-upload').addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (!file) return;
-            statusText.innerText = "⏳ 載入模型中...";
-            statusText.style.color = "#d97706";
-            
-            loader.load(URL.createObjectURL(file), (gltf) => {
-                if (currentVrm) scene.remove(currentVrm.scene); 
-                currentVrm = gltf.userData.vrm;
-                
-                // 將模型轉向正面
-                currentVrm.scene.rotation.y = Math.PI; 
-                
-                // 🌟 【新增：A-Pose 預設姿勢初始化】 🌟
-                // 找到左右大臂骨骼，並將其向身體兩側放下約 40 度 (Math.PI / 4.5)
-                const leftArm = currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm');
-                const rightArm = currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm');
-                if (leftArm) leftArm.rotation.z = Math.PI / 4.5;
-                if (rightArm) rightArm.rotation.z = -Math.PI / 4.5;
-
-                scene.add(currentVrm.scene);
-
-                statusText.innerText = "模型就緒，請啟動攝影機";
-                statusText.style.color = "#16a34a";
-                document.getElementById('start-camera').disabled = false; 
-            });
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // 載入背景圖
-        document.getElementById('bg-upload').addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (!file) return;
-            const imgEl = document.getElementById('bg-image');
-            imgEl.src = URL.createObjectURL(file);
-            imgEl.style.display = 'block';
-        });
-
-        // 燈光拉桿綁定
-        const bindSlider = (id, valId, callback) => {
-            document.getElementById(id).addEventListener('input', (e) => {
-                const val = parseFloat(e.target.value);
-                document.getElementById(valId).innerText = val.toFixed(1);
-                callback(val);
-            });
-        };
-        bindSlider('ambient-slider', 'ambient-val', (val) => ambientLight.intensity = val);
-        bindSlider('dir-slider', 'dir-val', (val) => directionalLight.intensity = val);
-        bindSlider('exp-slider', 'exp-val', (val) => renderer.toneMappingExposure = val);
-
-        // ==========================================
-        // 3. 動作捕捉與骨骼轉換
-        // ==========================================
-        const rigRotation = (boneName, rads, damp = 1, slerp = 0.1) => {
-            if (!currentVrm || !rads) return;
-            const boneNode = currentVrm.humanoid.getNormalizedBoneNode(boneName);
-            if (!boneNode) return;
-            boneNode.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(rads.x * damp, rads.y * damp, rads.z * damp)), slerp);
-        };
-
-        const onResults = (results) => {
-            // 繪製除錯骨架
-            if(canvasElement.width !== videoElement.videoWidth && videoElement.videoWidth > 0) {
-                canvasElement.width = videoElement.videoWidth;
-                canvasElement.height = videoElement.videoHeight;
-            }
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-            if (results.faceLandmarks) drawConnectors(canvasCtx, results.faceLandmarks, FACEMESH_TESSELATION, {color: '#C0C0C070', lineWidth: 1});
-            if (results.poseLandmarks) drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
-            if (results.leftHandLandmarks) drawConnectors(canvasCtx, results.leftHandLandmarks, HAND_CONNECTIONS, {color: '#CC0000', lineWidth: 3});
-            if (results.rightHandLandmarks) drawConnectors(canvasCtx, results.rightHandLandmarks, HAND_CONNECTIONS, {color: '#00CC00', lineWidth: 3});
-            canvasCtx.restore();
-
-            if (!currentVrm) return;
-
-            // 臉部與眨眼連動 (包含除零修正與反轉邏輯)
-            if (results.faceLandmarks && videoElement.videoWidth > 0) {
-                const riggedFace = Kalidokit.Face.solve(results.faceLandmarks, { 
-                    runtime: "mediapipe", 
-                    imageSize: { width: videoElement.videoWidth, height: videoElement.videoHeight } 
-                });
-                
-                rigRotation("neck", riggedFace.head, 0.7); 
-                rigRotation("head", riggedFace.head, 0.7); 
-                
-                // 🌟 【修正：眨眼閾值反轉判定】 🌟
-                // 小於 0.5 判定為閉眼(1)，大於判定為睜眼(0)，避免半開亂抖
-                const isLeftClosed = riggedFace.eye.l < 0.5 ? 1 : 0;
-                const isRightClosed = riggedFace.eye.r < 0.5 ? 1 : 0;
-                currentVrm.expressionManager.setValue('blinkLeft', isLeftClosed);
-                currentVrm.expressionManager.setValue('blinkRight', isRightClosed);
-                
-                currentVrm.expressionManager.setValue('aa', riggedFace.mouth.shape.A);
-                currentVrm.expressionManager.setValue('ih', riggedFace.mouth.shape.I);
-                currentVrm.expressionManager.setValue('ou', riggedFace.mouth.shape.U);
-                currentVrm.expressionManager.setValue('ee', riggedFace.mouth.shape.E);
-                currentVrm.expressionManager.setValue('oh', riggedFace.mouth.shape.O);
-            }
-
-            // 身體連動
-            const pose3D = results.poseWorldLandmarks || results.ea;
-            if (pose3D && results.poseLandmarks && videoElement.videoWidth > 0) {
-                const riggedPose = Kalidokit.Pose.solve(pose3D, results.poseLandmarks, { 
-                    runtime: "mediapipe", 
-                    imageSize: { width: videoElement.videoWidth, height: videoElement.videoHeight } 
-                });
-                if (riggedPose) {
-                    rigRotation("rightUpperArm", riggedPose.RightUpperArm, 1, 0.3);
-                    rigRotation("rightLowerArm", riggedPose.RightLowerArm, 1, 0.3);
-                    rigRotation("leftUpperArm", riggedPose.LeftUpperArm, 1, 0.3);
-                    rigRotation("leftLowerArm", riggedPose.LeftLowerArm, 1, 0.3);
-                    rigRotation("spine", riggedPose.Spine, 1, 0.3);
-                }
-            }
-
-            // 手腕連動
-            if (results.rightHandLandmarks) {
-                const riggedRightHand = Kalidokit.Hand.solve(results.rightHandLandmarks, "Right");
-                if (riggedRightHand) rigRotation("rightHand", riggedRightHand.RightWrist, 1, 0.3);
-            }
-            if (results.leftHandLandmarks) {
-                const riggedLeftHand = Kalidokit.Hand.solve(results.leftHandLandmarks, "Left");
-                if (riggedLeftHand) rigRotation("leftHand", riggedLeftHand.LeftWrist, 1, 0.3);
-            }
-        };
-
-        // ==========================================
-        // 4. 啟動攝影機 (包含 iOS 安全性檢查)
-        // ==========================================
-        const holistic = new Holistic({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}` });
-        holistic.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
-        holistic.onResults(onResults);
-
-        document.getElementById('start-camera').addEventListener('click', async () => {
-            const btn = document.getElementById('start-camera');
-            btn.disabled = true;
-            statusText.innerText = "⏳ 請求鏡頭權限中...";
-
-            // ⚠️ 檢查是否為 HTTPS 或 Localhost 環境 (iOS 硬性規定)
-            if (window.isSecureContext === false) {
-                statusText.innerText = "❌ iPad 需要 HTTPS 才能開鏡頭";
-                statusText.style.color = "red";
-                alert("蘋果限制：必須使用 https:// 或 localhost 才能啟動攝影機！\n若是用 IP 位址 (如 192.168.x.x) 會被強制阻擋。");
-                btn.disabled = false;
-                return;
-            }
-
-            try {
-                // 請求前置鏡頭
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-                videoElement.srcObject = stream;
-
-                // 確保讀取到影片長寬後再開始捕捉
-                videoElement.onloadedmetadata = async () => {
-                    try {
-                        await videoElement.play();
-                        statusText.innerText = "🟢 動作捕捉中！(請確保上半身入鏡)";
-                        statusText.style.color = "#16a34a";
-
-                        async function captureFrame() {
-                            if (!videoElement.paused && !videoElement.ended) {
-                                await holistic.send({ image: videoElement });
-                            }
-                            requestAnimationFrame(captureFrame);
-                        }
-                        captureFrame();
-
-                    } catch (playError) {
-                        console.error("iOS 播放影片失敗:", playError);
-                        statusText.innerText = "❌ 影片播放被阻擋";
-                        statusText.style.color = "red";
-                    }
-                };
-
-            } catch (error) {
-                console.error("Camera access failed:", error);
-                statusText.innerText = "❌ 鏡頭權限被拒絕！請檢查 Safari 設定";
-                statusText.style.color = "red";
-                btn.disabled = false;
-            }
-        });
+        status.innerText = "系統已就緒，請登入 VRoid Hub 載入角色。";
     </script>
 </body>
 </html>
+
+這份代碼提供了一個專業的極簡化起點。您可以透過註冊 VRoid Hub Developer 應用程式來完成授權部分的重定向與 Token 交換。希望這能完美符合您的需求！

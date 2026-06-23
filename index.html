@@ -289,13 +289,12 @@ canvas#three-canvas {
             boneNode.quaternion.slerp(quaternion, slerp);
         };
 
-        const onResults = (results) => {
-            // 設定畫布解析度與視訊同步
+const onResults = (results) => {
+            // 1. 繪製骨架到 Canvas (除錯用)
             if(canvasElement.width !== videoElement.videoWidth) {
                 canvasElement.width = videoElement.videoWidth || 640;
                 canvasElement.height = videoElement.videoHeight || 480;
             }
-
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
@@ -305,26 +304,54 @@ canvas#three-canvas {
             if (results.rightHandLandmarks) drawConnectors(canvasCtx, results.rightHandLandmarks, HAND_CONNECTIONS, {color: '#00CC00', lineWidth: 3});
             canvasCtx.restore();
 
+            // 2. 驅動 VRM 模型
             if (!currentVrm) return;
+
+            // --- 臉部連動 ---
             if (results.faceLandmarks) {
                 const riggedFace = Kalidokit.Face.solve(results.faceLandmarks, { runtime: "mediapipe", video: videoElement });
                 rigRotation("neck", riggedFace.head, 0.7); 
                 rigRotation("head", riggedFace.head, 0.7); 
-                currentVrm.expressionManager.setValue('blinkLeft', riggedFace.eye.l);
-                currentVrm.expressionManager.setValue('blinkRight', riggedFace.eye.r);
+                
+                // 【修復】將 Kalidokit 的「睜眼度(0~1)」反轉成 VRM 的「眨眼度(0~1)」
+                // 加上 0.2 的緩衝區，避免眼睛一直半開半閉發抖
+                let blinkL = 1 - riggedFace.eye.l;
+                let blinkR = 1 - riggedFace.eye.r;
+                currentVrm.expressionManager.setValue('blinkLeft', blinkL < 0.2 ? 0 : blinkL);
+                currentVrm.expressionManager.setValue('blinkRight', blinkR < 0.2 ? 0 : blinkR);
+                
                 currentVrm.expressionManager.setValue('aa', riggedFace.mouth.shape.A);
                 currentVrm.expressionManager.setValue('ih', riggedFace.mouth.shape.I);
                 currentVrm.expressionManager.setValue('ou', riggedFace.mouth.shape.U);
                 currentVrm.expressionManager.setValue('ee', riggedFace.mouth.shape.E);
                 currentVrm.expressionManager.setValue('oh', riggedFace.mouth.shape.O);
             }
-            const pose3D = results.ea || results.poseWorldLandmarks;
+
+            // --- 身體連動 ---
+            // 兼容不同版本的 MediaPipe 屬性名稱 (poseWorldLandmarks 或 ea)
+            const pose3D = results.poseWorldLandmarks || results.ea; 
             if (pose3D && results.poseLandmarks) {
                 const riggedPose = Kalidokit.Pose.solve(pose3D, results.poseLandmarks, { runtime: "mediapipe", video: videoElement });
-                rigRotation("rightUpperArm", riggedPose.RightUpperArm, 1, 0.3);
-                rigRotation("rightLowerArm", riggedPose.RightLowerArm, 1, 0.3);
-                rigRotation("leftUpperArm", riggedPose.LeftUpperArm, 1, 0.3);
-                rigRotation("leftLowerArm", riggedPose.LeftLowerArm, 1, 0.3);
+                
+                // 確保有算出身體數據才執行
+                if (riggedPose) {
+                    rigRotation("rightUpperArm", riggedPose.RightUpperArm, 1, 0.3);
+                    rigRotation("rightLowerArm", riggedPose.RightLowerArm, 1, 0.3);
+                    rigRotation("leftUpperArm", riggedPose.LeftUpperArm, 1, 0.3);
+                    rigRotation("leftLowerArm", riggedPose.LeftLowerArm, 1, 0.3);
+                    // 【新增】脊椎連動 (身體傾斜) 與 手腕轉動
+                    rigRotation("spine", riggedPose.Spine, 1, 0.3);
+                }
+            }
+
+            // --- 手部連動 (手腕旋轉) ---
+            if (results.rightHandLandmarks && pose3D) {
+                const riggedRightHand = Kalidokit.Hand.solve(results.rightHandLandmarks, "Right");
+                if (riggedRightHand) rigRotation("rightHand", riggedRightHand.RightWrist, 1, 0.3);
+            }
+            if (results.leftHandLandmarks && pose3D) {
+                const riggedLeftHand = Kalidokit.Hand.solve(results.leftHandLandmarks, "Left");
+                if (riggedLeftHand) rigRotation("leftHand", riggedLeftHand.LeftWrist, 1, 0.3);
             }
         };
 

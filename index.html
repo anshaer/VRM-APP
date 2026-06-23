@@ -64,15 +64,16 @@
         }
 
         /* 3D 畫布，放在背景圖上層 */
-        canvas#three-canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100% !important;
-            height: 100% !important;
-            z-index: 2;
-            pointer-events: none; /* 讓滑鼠事件可以穿透（如果需要）*/
-        }
+/* 修改後的 3D 畫布 CSS */
+canvas#three-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 2;
+    pointer-events: auto; /* 恢復接收滑鼠與觸控事件 */
+}
 
         /* UI 元件樣式 */
         .control-group { margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #cbd5e1; }

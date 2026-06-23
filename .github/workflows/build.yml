@@ -1,0 +1,74 @@
+name: Build Mobile Apps (APK, AAB, IPA)
+
+on:
+  push:
+    branches: [ "main" ] # 當推播到 main 分支時觸發
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Web Assets (Vite/Webpack)
+        run: npm run build # 編譯你的前端 HTML/JS 產物
+
+      - name: Setup Java (for Android)
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+
+      - name: Build Android APK
+        working-directory: ./android
+        run: ./gradlew assembleDebug
+
+      - name: Build Android AAB
+        working-directory: ./android
+        run: ./gradlew bundleRelease
+
+      - name: Upload Android Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-builds
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/bundle/release/*.aab
+
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Web Assets
+        run: npm run build
+
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+
+      # IPA 編譯需要 Apple 開發者憑證與 Provisioning Profile，這一步需要在 GitHub Secrets 設定
+      - name: Build iOS App (Requires Certificates)
+        run: |
+          echo "這部分需要設定 Fastlane 或 xcodebuild 並且匯入你的 Apple Certificate。"
+          # xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphoneos -configuration Release archive -archivePath $PWD/build/App.xcarchive
